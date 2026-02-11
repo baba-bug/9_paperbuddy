@@ -47,6 +47,7 @@ class SpeechProcessor:
                             self.voiced_frames = []
                             self.ring_buffer.clear()
                             self.recorder.history.clear()
+                            self.recorder.reset_vad()
                             print("🎙️  继续监听中...")
 
         except KeyboardInterrupt:

@@ -21,9 +21,9 @@ DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
 RATE = 16000 
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
-FRAME_DURATION_MS = 30
-PADDING_DURATION_MS = 3000
-CHUNK_SIZE = int(RATE * FRAME_DURATION_MS / 1000)
+CHUNK_SIZE = 512               # Silero VAD requires 512 samples at 16kHz (~32ms)
+PADDING_DURATION_MS = 3000     # Silence timeout before processing
+VAD_THRESHOLD = 0.5            # Silero probability threshold (0.0-1.0, higher = less sensitive)
 
 
 class Session:

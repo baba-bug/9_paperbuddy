@@ -3,5 +3,6 @@ pyautogui
 pyaudio
 Pillow
 webrtcvad-wheels
+silero-vad
 numpy
 python-dotenv

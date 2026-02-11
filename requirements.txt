@@ -1,0 +1,6 @@
+google-generativeai
+pyautogui
+pyaudio
+Pillow
+webrtcvad-wheels
+numpy

@@ -1,85 +1,56 @@
 import os
 import sys
-import time
-import collections
-import threading
-import datetime
-import pyautogui
+import argparse
 
-# Add src to path to ensure modules can be imported if run from root
+# Add src to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from modules.utils import check_ffmpeg, ensure_directories, save_wav, compress_image, OUTPUT_FILE, RECORDINGS_DIR, SCREENSHOTS_DIR, RATE
+from modules.utils import check_ffmpeg, create_session, list_sessions
 from modules.audio_recorder import AudioRecorder
-from modules.gemini_client import analyze_content
+from modules.speech_processor import SpeechProcessor
+
 
 def main():
-    print(f"🚀 AI 论文伴侣 (模块化版) 已启动")
-    
+    parser = argparse.ArgumentParser(description="AI 论文伴侣")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Resume a previous session by name (e.g. session_20260211_223000)")
+    parser.add_argument("--list", action="store_true",
+                        help="List all available sessions")
+    args = parser.parse_args()
+
+    print("🚀 AI 论文伴侣 已启动")
+
+    if args.list:
+        list_sessions()
+        return
+
     if not check_ffmpeg():
         return
 
-    ensure_directories()
+    # Create or resume session
+    session = create_session(resume_name=args.resume)
+    if not session:
+        return
 
-    print(f"📝 笔记将保存至: {os.path.abspath(OUTPUT_FILE)}")
-    print(f"📂 录音将保存至: {os.path.abspath(RECORDINGS_DIR)}")
-    print("🎙️  请开始看论文并说话 (检测到静音会自动提交)... 按 Ctrl+C 退出")
+    print(f"📝 笔记: {session.log_file}")
+    print(f"📂 录音: {session.recordings_dir}")
+    print("-" * 50)
+    print("🎙️  请开始看论文并说话 (等待3秒静音提交)... 按 Ctrl+C 退出")
 
     recorder = AudioRecorder()
     if not recorder.start_stream():
         return
 
-    # State variables
-    triggered = False
-    voiced_frames = []
-    ring_buffer = collections.deque(maxlen=20) 
-    
-    try:
-        while True:
-            chunk = recorder.read()
-            is_speech = recorder.is_speech(chunk)
-            
-            if not triggered:
-                ring_buffer.append(chunk)
-                if is_speech:
-                    print("🔴 检测到语音，开始录制...")
-                    triggered = True
-                    voiced_frames.extend(ring_buffer)
-                    voiced_frames.append(chunk)
-            else:
-                voiced_frames.append(chunk)
-                if is_speech:
-                    recorder.history.clear()
-                else:
-                    recorder.history.append(chunk)
-                    if len(recorder.history) == recorder.history.maxlen:
-                        print("⏹️  说话结束，开始处理...")
-                        triggered = False
-                        
-                        # 1. Generate unique filenames
-                        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                        audio_filename = os.path.join(RECORDINGS_DIR, f"capture_{timestamp_str}.wav")
-                        screenshot_filename = os.path.join(SCREENSHOTS_DIR, f"capture_{timestamp_str}.png")
-                        
-                        save_wav(voiced_frames, audio_filename)
-                        
-                        # 2. Screenshot
-                        pyautogui.screenshot(screenshot_filename)
-                        compress_image(screenshot_filename, screenshot_filename)
-                        
-                        # 3. Asynchronous processing
-                        analysis_thread = threading.Thread(target=analyze_content, args=(audio_filename, screenshot_filename))
-                        analysis_thread.start()
-                        
-                        # Reset for next sentence
-                        voiced_frames = []
-                        ring_buffer.clear()
-                        recorder.history.clear()
-                        print("🎙️  继续监听中...")
+    processor = SpeechProcessor(recorder, session)
 
+    try:
+        processor.process_loop()
     except KeyboardInterrupt:
-        print("\n👋 退出程序")
+        pass
+    finally:
         recorder.close()
+        print(f"\n📁 Session saved: {session.name}")
+
 
 if __name__ == "__main__":
     main()

@@ -2,11 +2,13 @@ import google.generativeai as genai
 from PIL import Image
 import os
 import datetime
-from .utils import API_KEY, MODEL_NAME, OUTPUT_FILE
+from .utils import API_KEY, MODEL_NAME
+
 
 def configure_genai():
-    if "在这里填入你的" in API_KEY:
-        print("⚠️  WARNING: API Key not set.")
+    if not API_KEY:
+        print("⚠️  WARNING: API Key not set. Please create a .env file.")
+        return None
     try:
         genai.configure(api_key=API_KEY)
         return genai.GenerativeModel(MODEL_NAME)
@@ -14,18 +16,19 @@ def configure_genai():
         print(f"❌ Failed to configure Gemini API: {e}")
         return None
 
+
 # Global model instance
 model = configure_genai()
 
-def analyze_content(audio_path, screenshot_path):
+
+def analyze_content(audio_path, screenshot_path, output_file):
     """Send to Gemini for multimodal analysis."""
     print(" -> 正在上传并分析...")
     if not model:
-        print("❌ Model not configured.")
+        print("❌ Model not configured. Check your .env file.")
         return
 
     try:
-        # Check if files exist
         if not os.path.exists(audio_path):
             print(f"❌ Audio file not found: {audio_path}")
             return
@@ -35,10 +38,10 @@ def analyze_content(audio_path, screenshot_path):
 
         # Upload audio
         audio_file = genai.upload_file(path=audio_path)
-        
+
         # Open image
         img = Image.open(screenshot_path)
-        
+
         prompt = """
         场景：我正在电脑上看论文/写代码，这是我的屏幕截图，附件是我刚才说的话。
         任务：请结合屏幕内容，把我的口语（可能包含吐槽、疑问、思路）转化为这篇论文的结构化笔记。
@@ -54,15 +57,11 @@ def analyze_content(audio_path, screenshot_path):
         ## 📝 结构化笔记
         (你的分析内容)
         """
-        
+
         response = model.generate_content([prompt, img, audio_file])
-        
+
         # Write to file
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        
-        # Create relative path for the image in the markdown
-        # valid markdown path from data/Research_Log.md to data/screenshots/image.png is just screenshots/image.png
-        # We need to extract the filename from screenshot_path
         filename = os.path.basename(screenshot_path)
         relative_img_path = f"screenshots/{filename}"
 
@@ -77,17 +76,17 @@ def analyze_content(audio_path, screenshot_path):
 
 ---
 """
-        
-        with open(OUTPUT_FILE, "a", encoding="utf-8") as f:
+
+        with open(output_file, "a", encoding="utf-8") as f:
             f.write(note_content)
-            
-        print(f"✅ 笔记已更新: {OUTPUT_FILE}")
-        
-        # Cleanup
+
+        print(f"✅ 笔记已更新: {os.path.basename(output_file)}")
+
+        # Cleanup cloud upload
         try:
             audio_file.delete()
         except:
             pass
-        
+
     except Exception as e:
         print(f"❌ 分析出错: {e}")

@@ -4,3 +4,4 @@ pyaudio
 Pillow
 webrtcvad-wheels
 numpy
+python-dotenv

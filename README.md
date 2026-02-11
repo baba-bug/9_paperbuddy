@@ -18,25 +18,32 @@ A voice-activated AI assistant that captures your speech and screen to generate 
     pip install -r requirements.txt
     ```
 
-## Usage
-
-1.  **Configuration**:
-    - Open `ai_assistant.py` and set your `API_KEY` (or set it as an environment variable `GOOGLE_API_KEY`).
-    - Adjust `OUTPUT_FILE` if needed.
-
-2.  **Run the Assistant**:
-    ```bash
-    python ai_assistant.py
+## 4. Configuration (Security)
+1.  **Create a `.env` file**:
+    Copy the example file and rename it to `.env`:
+    ```cmd
+    copy .env.example .env
+    ```
+2.  **Add your API Key**:
+    Open `.env` in a text editor and paste your Google Gemini API key:
+    ```ini
+    GOOGLE_API_KEY=your_actual_api_key_here
     ```
 
-3.  **How to use**:
-    - Open your research paper (PDF, web page, etc.).
-    - **Speak** your thoughts/questions.
-    - **Pause** for ~1.5 seconds.
-    - The assistant will capture the audio and screen, analyze it with Gemini, and append the notes to `Research_Log.md`.
+## 5. Usage
+1.  **Run the Assistant**:
+    ```bash
+    python src/main.py
+    ```
+2.  **Interaction**:
+    -   **Speak**: The system listens for your voice.
+    -   **Pause**: Wait for **3 seconds** of silence.
+    -   **Process**: It will capture audio + screen and analyze them.
+    -   **Log**: Check `data/Research_Log.md` for the output.
 
 ## Troubleshooting
-
+-   **Microphone Issue**: Run `python src/debug_audio.py` to test your mic.
+-   **API Key Error**: Ensure your `.env` file has a valid `GOOGLE_API_KEY`.
 -   **FFmpeg not found**: Ensure `ffmpeg` is in your PATH.
 -   **PyAudio error**: If pip install fails, download the `.whl` from [lfd.uci.edu](https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio).
 -   **VAD Error**: Ensure your microphone supports 16kHz sample rate (the script attempts to configure this).

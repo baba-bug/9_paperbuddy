@@ -6,3 +6,5 @@ webrtcvad-wheels
 silero-vad
 numpy
 python-dotenv
+opencv-python
+mss

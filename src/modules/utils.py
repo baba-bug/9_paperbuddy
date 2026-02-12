@@ -2,43 +2,51 @@ import os
 import shutil
 import wave
 import pyaudio
-import sys
 import datetime
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Configuration
+# ── API Config ──────────────────────────────────────────────
 API_KEY = os.getenv("GOOGLE_API_KEY")
 MODEL_NAME = 'gemini-2.5-flash'
 
-# Paths
+# ── Paths ───────────────────────────────────────────────────
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
 
-# Audio Config
-RATE = 16000 
+# ── Audio Config ────────────────────────────────────────────
+RATE = 16000
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
 CHUNK_SIZE = 512               # Silero VAD requires 512 samples at 16kHz (~32ms)
-PADDING_DURATION_MS = 3000     # Silence timeout before processing
-VAD_THRESHOLD = 0.5            # Silero probability threshold (0.0-1.0, higher = less sensitive)
+PADDING_DURATION_MS = 3000     # Silence timeout before stopping recording
+VAD_THRESHOLD = 0.5            # Silero probability threshold (0.0-1.0)
+
+# ── Screen Recording Config ────────────────────────────────
+SCREEN_FPS = 3                 # Frames per second for screen recording
+HEARTBEAT_INTERVAL = 10        # Seconds between heartbeat screenshots
+
+# ── Analyzer Config ────────────────────────────────────────
+ANALYSIS_INTERVAL = 60        # Seconds between batch analyses (10 min)
 
 
 class Session:
-    """Represents a single recording session with its own folder structure."""
+    """Represents a single recording session with pending/processing workflow."""
 
     def __init__(self, name):
         self.name = name
         self.base_dir = os.path.join(DATA_DIR, name)
-        self.recordings_dir = os.path.join(self.base_dir, "recordings")
-        self.screenshots_dir = os.path.join(self.base_dir, "screenshots")
+        self.pending_dir = os.path.join(self.base_dir, "pending")
+        self.processing_dir = os.path.join(self.base_dir, "processing")
+        self.archive_dir = os.path.join(self.base_dir, "archive")
         self.log_file = os.path.join(self.base_dir, "Research_Log.md")
 
     def ensure_directories(self):
-        os.makedirs(self.recordings_dir, exist_ok=True)
-        os.makedirs(self.screenshots_dir, exist_ok=True)
+        os.makedirs(self.pending_dir, exist_ok=True)
+        os.makedirs(self.processing_dir, exist_ok=True)
+        os.makedirs(self.archive_dir, exist_ok=True)
 
     def is_existing(self):
         return os.path.isdir(self.base_dir)
@@ -105,18 +113,3 @@ def save_wav(frames, filename):
         print(f"💾 Audio saved: {os.path.basename(filename)} ({len(frames)} frames)")
     except Exception as e:
         print(f"❌ Error saving WAV: {e}")
-
-
-def compress_image(input_path, output_path, max_size=(1024, 1024), quality=85):
-    """Resize and compress image to reduce file size."""
-    try:
-        from PIL import Image
-        with Image.open(input_path) as img:
-            img.thumbnail(max_size)
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            img.save(output_path, "JPEG", quality=quality)
-        return True
-    except Exception as e:
-        print(f"❌ Error compressing image: {e}")
-        return False

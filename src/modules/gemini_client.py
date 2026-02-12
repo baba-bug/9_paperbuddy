@@ -1,7 +1,9 @@
 import google.generativeai as genai
 from PIL import Image
 import os
+import time
 import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from .utils import API_KEY, MODEL_NAME
 
 
@@ -21,72 +23,162 @@ def configure_genai():
 model = configure_genai()
 
 
-def analyze_content(audio_path, screenshot_path, output_file):
-    """Send to Gemini for multimodal analysis."""
-    print(" -> 正在上传并分析...")
+def batch_analyze(file_list, output_file, archive_dir=None):
+    """
+    Upload a batch of files (images, audio, video) to Gemini and get a summary.
+    
+    Args:
+        file_list: List of absolute file paths, sorted by timestamp.
+        output_file: Path to Research_Log.md to append results.
+        archive_dir: Path to archive directory (for embedding file links in log).
+    """
     if not model:
         print("❌ Model not configured. Check your .env file.")
-        return
+        return False
+
+    if not file_list:
+        print("  (no files to analyze)")
+        return True
+
+    print(f"  📤 Uploading {len(file_list)} files to Gemini (parallel)...")
+    uploaded_files = []
+    content_parts = []
 
     try:
-        if not os.path.exists(audio_path):
-            print(f"❌ Audio file not found: {audio_path}")
-            return
-        if not os.path.exists(screenshot_path):
-            print(f"❌ Screenshot file not found: {screenshot_path}")
-            return
+        # Upload all files in parallel
+        def _upload_one(fpath):
+            uploaded = genai.upload_file(path=fpath)
+            print(f"    ✅ {os.path.basename(fpath)}")
+            return uploaded
 
-        # Upload audio
-        audio_file = genai.upload_file(path=audio_path)
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(_upload_one, fp): fp for fp in file_list}
+            for future in as_completed(futures):
+                fpath = futures[future]
+                try:
+                    uploaded_files.append(future.result())
+                except Exception as e:
+                    print(f"    ❌ Failed to upload {os.path.basename(fpath)}: {e}")
 
-        # Open image
-        img = Image.open(screenshot_path)
+        if not uploaded_files:
+            print("  ❌ No files were uploaded successfully.")
+            return False
 
+        # Wait for files to become ACTIVE
+        print("  ⏳ Waiting for files to be processed...")
+        for uf in uploaded_files:
+            _wait_for_active(uf)
+
+        # Build prompt
         prompt = """
-        场景：我正在电脑上看论文/写代码，这是我的屏幕截图，附件是我刚才说的话。
-        任务：请结合屏幕内容，把我的口语（可能包含吐槽、疑问、思路）转化为这篇论文的结构化笔记。
-        要求：
-        1. **逐字稿**：首先你需要尽可能准确地转录我说的话（Verbatim Transcript）。
-        2. **分析**：如果我在读特定段落，请结合截图指出我关注的内容。
-        3. 用中文回答，格式简洁，使用Markdown结构。
-        
-        输出格式如下：
-        ## 🗣️ 口语逐字稿
-        (你的转录内容)
-        
-        ## 📝 结构化笔记
-        (你的分析内容)
-        """
+你是一个AI研究助手。以下是用户过去一段时间的工作流记录。
 
-        response = model.generate_content([prompt, img, audio_file])
+数据包含：
+- **语音片段** (.wav)：用户在看论文/写代码时说的话（可能包含吐槽、疑问、思路）
+- **屏幕录像** (.mp4)：与语音同步的屏幕录制
+- **定时截图** (.jpg)：每10秒自动截取的屏幕画面
 
-        # Write to file
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        filename = os.path.basename(screenshot_path)
-        relative_img_path = f"screenshots/{filename}"
+请按照时间顺序，完成以下任务：
+1. **逐字转录**：将每段语音尽可能准确地转录为文字。
+2. **操作路径还原**：根据截图和视频，简洁地还原用户的操作路径（看了什么、做了什么），每一个操作用一句话概括。
+3. **结构化总结**：生成Markdown格式的总结。
 
-        note_content = f"""
-> **[{timestamp}]**
-{response.text}
+输出格式：
+## 📋 时间段总结 [HH:MM - HH:MM]
 
-<details>
-<summary>📸 点击查看屏幕截图</summary>
-<img src="{relative_img_path}" width="800" />
-</details>
+### 🗣️ 语音转录
+(按时间顺序列出每段语音的转录)
 
----
+### 🖥️ 操作路径
+(对他这段时间的操作进行高层的语义理解)
 """
+        content_parts.append(prompt)
+        content_parts.extend(uploaded_files)
+
+        print("  🧠 Analyzing with Gemini...")
+        response = model.generate_content(content_parts)
+
+        # Build file reference section
+        file_refs = _build_file_references(file_list, output_file, archive_dir)
+
+        # Write to log
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        note_content = f"\n---\n\n> **[Batch Analysis: {timestamp}]**\n\n{response.text}\n\n{file_refs}\n\n---\n"
 
         with open(output_file, "a", encoding="utf-8") as f:
             f.write(note_content)
 
-        print(f"✅ 笔记已更新: {os.path.basename(output_file)}")
+        print(f"  ✅ 分析完成, 写入: {os.path.basename(output_file)}")
 
-        # Cleanup cloud upload
-        try:
-            audio_file.delete()
-        except:
-            pass
+        # Cleanup cloud uploads
+        for uf in uploaded_files:
+            try:
+                uf.delete()
+            except:
+                pass
+
+        return True
 
     except Exception as e:
-        print(f"❌ 分析出错: {e}")
+        print(f"  ❌ Batch analysis error: {e}")
+        return False
+
+
+def _build_file_references(file_list, output_file, archive_dir):
+    """Build markdown section with links to archived media files."""
+    if not archive_dir:
+        return ""
+
+    # Calculate relative path from Research_Log.md to archive/
+    log_dir = os.path.dirname(output_file)
+    rel_archive = os.path.relpath(archive_dir, log_dir)
+
+    screenshots = []
+    audio_clips = []
+    video_clips = []
+
+    for fpath in file_list:
+        fname = os.path.basename(fpath)
+        rel_path = f"{rel_archive}/{fname}"
+        if fname.endswith(".jpg"):
+            screenshots.append(f"![{fname}]({rel_path})")
+        elif fname.endswith(".wav"):
+            audio_clips.append(f"- 🎙️ [{fname}]({rel_path})")
+        elif fname.endswith(".mp4"):
+            video_clips.append(f"- 🎬 [{fname}]({rel_path})")
+
+    parts = ["<details>\n<summary>📎 本次分析的原始素材</summary>\n"]
+
+    if screenshots:
+        parts.append("**截图:**")
+        for s in screenshots:
+            parts.append(s)
+        parts.append("")
+
+    if audio_clips:
+        parts.append("**语音:**")
+        parts.extend(audio_clips)
+        parts.append("")
+
+    if video_clips:
+        parts.append("**录屏:**")
+        parts.extend(video_clips)
+        parts.append("")
+
+    parts.append("</details>")
+    return "\n".join(parts)
+
+
+def _wait_for_active(uploaded_file, timeout=120):
+    """Wait for an uploaded file to become ACTIVE (ready for use)."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            f = genai.get_file(uploaded_file.name)
+            if f.state.name == "ACTIVE":
+                return True
+        except:
+            pass
+        time.sleep(2)
+    print(f"  ⚠️ File {uploaded_file.name} did not become ACTIVE in time.")
+    return False

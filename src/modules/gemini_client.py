@@ -47,9 +47,19 @@ def batch_analyze(file_list, output_file, archive_dir=None):
     try:
         # Upload all files in parallel
         def _upload_one(fpath):
-            uploaded = genai.upload_file(path=fpath)
-            print(f"    ✅ {os.path.basename(fpath)}")
-            return uploaded
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    uploaded = genai.upload_file(path=fpath)
+                    print(f"    ✅ {os.path.basename(fpath)}")
+                    return uploaded
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt
+                        print(f"    ⚠️ Upload failed ({os.path.basename(fpath)}), retrying in {wait_time}s... ({e})")
+                        time.sleep(wait_time)
+                    else:
+                        raise e
 
         with ThreadPoolExecutor(max_workers=8) as executor:
             futures = {executor.submit(_upload_one, fp): fp for fp in file_list}
@@ -108,19 +118,18 @@ def batch_analyze(file_list, output_file, archive_dir=None):
 - **定时截图** (.jpg)：每10秒自动截取的屏幕画面
 
 请按照时间顺序，完成以下任务：
-1. **逐字转录**：将每段语音转录为文字。**自动过滤掉无意义的语气词（如“嗯”、“啊”、“那个”、“就是”等），只保留有意义的内容。**
+1. **逐字转录**：如果没有.wav文件则为空，否则将每段语音转录为文字。**自动过滤掉无意义的语气词（如“嗯”、“啊”、“那个”、“就是”等），只保留有意义的内容。**
 2. **结构化总结**：生成Markdown格式的总结。
 
 输出格式：
-## 📋 时间段总结 [HH:MM:SS - HH:MM:SS]
+## 📋 时间段总结 [HH:MM:SS - HH:MM:SS] （这个批次的所有内容的整体时间范围）
 
-### 🗣️ 语音转录（根据语音片段，如果没有.wav文件则为空）
+### 🗣️ 语音转录（根据语音片段，如果没有.wav文件则为空，这个批次内所有语音片段）
 - **[HH:MM:SS]** (转录内容...)
 或者
 - (无语音片段)
 
-
-### 📝 关键事件，忽略不变化的事件
+### 📝 关键事件（根据这个批次内所有截图和录屏，忽略不变化的事件）
 - **[HH:MM:SS]** (事件描述...)
 
 """

@@ -15,8 +15,16 @@ class Logger:
         self.recorder = AudioRecorder()
         self.screen = ScreenRecorder()
         self._running = False
+        self._paused = False  # New pause flag
         self._is_recording_speech = False  # True when currently recording a speech clip
         self._heartbeat_thread = None
+
+    def toggle_pause(self):
+        """Toggle the pause state."""
+        self._paused = not self._paused
+        state = "⏸️ PAUSED" if self._paused else "▶️ RESUMED"
+        print(f"\n{state} " + "-"*20)
+        return self._paused
 
     def start(self):
         """Start the logger: open mic stream and begin heartbeat + VAD loop."""
@@ -54,6 +62,22 @@ class Logger:
 
         try:
             while self._running:
+                # If paused, just read and discard to keep buffer clean
+                if self._paused:
+                    self.recorder.read()
+                    if triggered:
+                        # If we were recording when paused, force stop
+                        print("\n⏸️  Paused during recording - discarding segment.")
+                        triggered = False
+                        self._is_recording_speech = False
+                        self.screen.stop_recording()
+                        voiced_frames = []
+                        ring_buffer.clear()
+                        self.recorder.history.clear()
+                        self.recorder.reset_vad()
+                    time.sleep(0.01)
+                    continue
+
                 chunk = self.recorder.read()
                 is_speech = self.recorder.is_speech(chunk)
 
@@ -118,6 +142,11 @@ class Logger:
             time.sleep(poll_interval)
             if not self._running:
                 break
+            
+            if self._paused:
+                elapsed = 0.0 # Reset timer while paused
+                continue
+
             elapsed += poll_interval
 
             if elapsed < HEARTBEAT_INTERVAL:

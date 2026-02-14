@@ -5,6 +5,7 @@ import argparse
 # Add src to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+import keyboard
 from modules.utils import check_ffmpeg, create_session, list_sessions, ANALYSIS_INTERVAL
 from modules.logger import Logger
 from modules.analyzer import Analyzer
@@ -44,7 +45,12 @@ def main():
 
     # Start Logger (blocking on main thread)
     logger = Logger(session)
-    print("🎙️  开始监听... 按 Ctrl+C 退出")
+    
+    # Register global hotkey for pause/resume
+    hotkey = "ctrl+alt+shift+p"
+    keyboard.add_hotkey(hotkey, logger.toggle_pause)
+    print(f"🎙️  开始监听... 按 Ctrl+C 退出")
+    print(f"⏯️  快捷键暂停/恢复: {hotkey}")
 
     try:
         logger.start()

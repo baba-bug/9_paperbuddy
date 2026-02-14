@@ -29,7 +29,7 @@ SCREEN_FPS = 3                 # Frames per second for screen recording
 HEARTBEAT_INTERVAL = 10        # Seconds between heartbeat screenshots
 
 # ── Analyzer Config ────────────────────────────────────────
-ANALYSIS_INTERVAL = 60        # Seconds between batch analyses (10 min)
+ANALYSIS_INTERVAL = 600        # Seconds between batch analyses (10 min)
 
 
 class Session:

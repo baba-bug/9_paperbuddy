@@ -17,10 +17,15 @@ class Logger:
         self._running = False
         self._paused = False  # New pause flag
         self._is_recording_speech = False  # True when currently recording a speech clip
-        self._heartbeat_thread = None
+        self._last_toggle_time = 0
 
     def toggle_pause(self):
-        """Toggle the pause state."""
+        """Toggle the pause state with debounce."""
+        now = time.time()
+        if now - self._last_toggle_time < 0.5:
+            return self._paused
+        
+        self._last_toggle_time = now
         self._paused = not self._paused
         state = "⏸️ PAUSED" if self._paused else "▶️ RESUMED"
         print(f"\n{state} " + "-"*20)

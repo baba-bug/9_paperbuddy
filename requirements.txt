@@ -4,8 +4,11 @@ pyaudio
 Pillow
 webrtcvad-wheels
 silero-vad
-numpy
+numpy<2.0
 python-dotenv
-opencv-python
+opencv-python==4.9.0.80
 mss
 keyboard
+deepface
+tf-keras
+transformers

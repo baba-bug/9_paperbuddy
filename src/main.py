@@ -47,7 +47,7 @@ def main():
     logger = Logger(session)
     
     # Register global hotkey for pause/resume
-    hotkey = "ctrl+alt+shift+p"
+    hotkey = "ctrl+alt+shift+capslock+p"
     keyboard.add_hotkey(hotkey, logger.toggle_pause)
     print(f"🎙️  开始监听... 按 Ctrl+C 退出")
     print(f"⏯️  快捷键暂停/恢复: {hotkey}")
